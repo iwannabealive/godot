@@ -1283,7 +1283,7 @@ void Environment::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_tonemap_agx_contrast"), &Environment::get_tonemap_agx_contrast);
 
 	ADD_GROUP("Tonemap", "tonemap_");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "tonemap_mode", PROPERTY_HINT_ENUM, "Linear,Reinhard,Filmic,ACES,AgX"), "set_tonemapper", "get_tonemapper");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "tonemap_mode", PROPERTY_HINT_ENUM, "Linear,Reinhard,Filmic,ACES,AgX,Anime"), "set_tonemapper", "get_tonemapper");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "tonemap_exposure", PROPERTY_HINT_RANGE, "0,4,0.01,or_greater"), "set_tonemap_exposure", "get_tonemap_exposure");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "tonemap_white", PROPERTY_HINT_RANGE, "1,16,0.01,or_greater"), "set_tonemap_white", "get_tonemap_white");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "tonemap_agx_white", PROPERTY_HINT_RANGE, "2,16.5,0.01,or_greater"), "set_tonemap_agx_white", "get_tonemap_agx_white");
