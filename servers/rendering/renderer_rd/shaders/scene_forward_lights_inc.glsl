@@ -221,6 +221,24 @@ void light_compute(hvec3 N, hvec3 L, hvec3 V, half A, hvec3 light_color, bool is
 
 			diffuse_light += light_color * diffuse_brdf_NL * attenuation;
 
+#if defined(DIFFUSE_TOON)
+		// Shadow boundary warm gradient (anime-style subsurface scattering simulation).
+		// At the light-shadow transition, adds a warm color shift that simulates
+		// subsurface scattering. Creates the characteristic warm glow at shadow
+		// edges seen in anime games (Genshin Impact, Guilty Gear Strive).
+		// Ref: GDC 2015 Guilty Gear Xrd, GDC 2024 Hi-Fi Rush.
+		{
+			half toon_s = max(roughness, half(0.01));
+			half boundary_w = toon_s * half(2.5);
+			// Narrow band centered at the shadow boundary (NdotL ≈ 0).
+			half boundary = smoothstep(-boundary_w, half(0.0), NdotL)
+						  * smoothstep(boundary_w, half(0.0), NdotL);
+			// Warm color shift toward red/orange at the boundary,
+			// modulated by albedo so skin/hair gets warm tint naturally.
+			diffuse_light += light_color * albedo * hvec3(1.2, 0.85, 0.6) * boundary * attenuation * half(0.2 / M_PI);
+		}
+#endif
+
 #if defined(LIGHT_BACKLIGHT_USED)
 			diffuse_light += light_color * (hvec3(1.0 / M_PI) - diffuse_brdf_NL) * backlight * attenuation;
 #endif
@@ -247,6 +265,16 @@ void light_compute(hvec3 N, hvec3 L, hvec3 V, half A, hvec3 light_color, bool is
 			half secondary_intensity = smoothstep(secondary_mid - spec_edge, secondary_mid + spec_edge, RdotV) * secondary_mid * half(0.3);
 			intensity = max(intensity, secondary_intensity);
 			diffuse_light += light_color * intensity * attenuation * specular_amount; // write to diffuse_light, as in toon shading you generally want no reflection
+
+			// Built-in toon rim lighting: adds a Fresnel-based edge glow for character
+			// silhouette definition, a fundamental feature of anime/cel-shaded rendering.
+			// Only contributes on the lit side to avoid unnatural glow in shadows.
+			// Ref: Genshin Impact uses a similar post-process Fresnel rim on characters.
+#if !defined(LIGHT_RIM_USED)
+			half toon_rim = pow(max(half(1e-4), half(1.0) - cNdotV), half(4.0));
+			half toon_rim_mask = smoothstep(half(0.0), half(0.5), NdotL); // lit-side only
+			diffuse_light += light_color * toon_rim * toon_rim_mask * attenuation * half(0.15);
+#endif
 
 #elif defined(SPECULAR_DISABLED)
 			// Do nothing.

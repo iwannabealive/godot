@@ -2199,8 +2199,14 @@ void fragment_shader(in SceneData scene_data) {
 #ifndef AMBIENT_LIGHT_DISABLED
 	{
 #if defined(DIFFUSE_TOON)
-		//simplify for toon, as
-		indirect_specular_light *= specular * metallic * albedo * 2.0;
+		// Toon indirect lighting: for anime/cel-shaded rendering, indirect specular
+		// should be subtle and blend naturally with the flat-shaded aesthetic.
+		// The standard PBR ambient BRDF creates overly realistic reflections that
+		// break the toon look. Instead, tint the indirect specular with albedo and
+		// keep it soft, allowing environment reflections only on metallic surfaces.
+		float toon_NdotV = clamp(dot(normal, view), 0.0001, 1.0);
+		float toon_fresnel = pow(1.0 - toon_NdotV, 3.0) * 0.5;
+		indirect_specular_light *= mix(albedo * specular, albedo * 2.0, metallic) + toon_fresnel;
 #else
 		// Base Layer
 		float NdotV = clamp(dot(normal, view), 0.0001, 1.0);

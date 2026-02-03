@@ -1563,7 +1563,12 @@ void light_compute(vec3 N, vec3 L, vec3 V, float A, vec3 light_color, bool is_di
 		// https://web.archive.org/web/20210228210901/http://blog.stevemcauley.com/2011/12/03/energy-conserving-wrapped-diffuse/
 		diffuse_brdf_NL = max(0.0, (NdotL + roughness) / ((1.0 + roughness) * (1.0 + roughness))) * (1.0 / M_PI);
 #elif defined(DIFFUSE_TOON)
-		diffuse_brdf_NL = smoothstep(-roughness, max(roughness, 0.01), NdotL) * (1.0 / M_PI);
+		// Enhanced toon diffuse with multi-band stepping for a cleaner anime look.
+		float toon_threshold = 0.0;
+		float toon_smooth = max(roughness, 0.01);
+		float base_toon = smoothstep(toon_threshold - toon_smooth, toon_threshold + toon_smooth, NdotL);
+		float mid_band = smoothstep(toon_threshold - toon_smooth * 2.5, toon_threshold + toon_smooth * 0.5, NdotL);
+		diffuse_brdf_NL = mix(mid_band * 0.5, base_toon, base_toon) * (1.0 / M_PI);
 #elif defined(DIFFUSE_BURLEY)
 		{
 			float FD90_minus_1 = 2.0 * cLdotH * cLdotH * roughness - 0.5;
@@ -1577,6 +1582,17 @@ void light_compute(vec3 N, vec3 L, vec3 V, float A, vec3 light_color, bool is_di
 #endif
 
 		diffuse_light += light_color * diffuse_brdf_NL * attenuation;
+
+#if defined(DIFFUSE_TOON)
+		// Shadow boundary warm gradient (anime-style subsurface scattering simulation).
+		{
+			float toon_s = max(roughness, 0.01);
+			float boundary_w = toon_s * 2.5;
+			float boundary = smoothstep(-boundary_w, 0.0, NdotL)
+						   * smoothstep(boundary_w, 0.0, NdotL);
+			diffuse_light += light_color * albedo * vec3(1.2, 0.85, 0.6) * boundary * attenuation * (0.2 / M_PI);
+		}
+#endif
 
 #if defined(LIGHT_BACKLIGHT_USED)
 		diffuse_light += light_color * (vec3(1.0 / M_PI) - diffuse_brdf_NL) * backlight * attenuation;
@@ -1594,13 +1610,25 @@ void light_compute(vec3 N, vec3 L, vec3 V, float A, vec3 light_color, bool is_di
 		// D
 
 #if defined(SPECULAR_TOON)
-
+		// Enhanced toon specular with sharper highlight bands for anime look.
 		vec3 R = normalize(-reflect(L, N));
 		float RdotV = dot(R, V);
 		float mid = 1.0 - roughness;
 		mid *= mid;
-		float intensity = smoothstep(mid - roughness * 0.5, mid + roughness * 0.5, RdotV) * mid;
-		diffuse_light += light_color * intensity * attenuation * specular_amount; // write to diffuse_light, as in toon shading you generally want no reflection
+		float spec_edge = roughness * 0.35;
+		float intensity = smoothstep(mid - spec_edge, mid + spec_edge, RdotV) * mid;
+		// Secondary highlight for hair/eye specular (common in anime rendering).
+		float secondary_mid = mid * 0.6;
+		float secondary_intensity = smoothstep(secondary_mid - spec_edge, secondary_mid + spec_edge, RdotV) * secondary_mid * 0.3;
+		intensity = max(intensity, secondary_intensity);
+		diffuse_light += light_color * intensity * attenuation * specular_amount;
+
+		// Built-in toon rim lighting: Fresnel-based edge glow for silhouette definition.
+#if !defined(LIGHT_RIM_USED)
+		float toon_rim = pow(max(1e-4, 1.0 - cNdotV), 4.0);
+		float toon_rim_mask = smoothstep(0.0, 0.5, NdotL);
+		diffuse_light += light_color * toon_rim * toon_rim_mask * attenuation * 0.15;
+#endif
 
 #elif defined(SPECULAR_DISABLED)
 		// none..
@@ -2365,8 +2393,10 @@ void main() {
 #ifndef AMBIENT_LIGHT_DISABLED
 	{
 #if defined(DIFFUSE_TOON)
-		//simplify for toon, as
-		specular_light *= specular * metallic * albedo * 2.0;
+		// Toon indirect: blend indirect specular with albedo and add subtle Fresnel rim.
+		float toon_NdotV = clamp(dot(normal, view), 0.0001, 1.0);
+		float toon_fresnel = pow(1.0 - toon_NdotV, 3.0) * 0.5;
+		specular_light *= mix(albedo * specular, albedo * 2.0, metallic) + toon_fresnel;
 #else
 
 		// scales the specular reflections, needs to be be computed before lighting happens,

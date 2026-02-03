@@ -1843,8 +1843,11 @@ void main() {
 #ifndef AMBIENT_LIGHT_DISABLED
 	{
 #if defined(DIFFUSE_TOON)
-		//simplify for toon, as
-		indirect_specular_light *= specular * metallic * albedo * half(2.0);
+		// Toon indirect lighting: blend indirect specular with albedo softly,
+		// keeping it compatible with the flat-shaded toon aesthetic.
+		half toon_NdotV = max(dot(normal, view), half(1e-4));
+		half toon_fresnel = pow(half(1.0) - toon_NdotV, half(3.0)) * half(0.5);
+		indirect_specular_light *= mix(albedo * specular, albedo * half(2.0), metallic) + toon_fresnel;
 #else
 
 		// scales the specular reflections, needs to be computed before lighting happens,
